@@ -4,10 +4,10 @@ all: libcalc test client server serverD
 
 
 servermain.o: servermain.cpp protocol.h
-	$(CXX) -Wall -c servermain.cpp -I.
+	$(CXX) -Wall -c servermain.cpp -I. -std=c++11
 
 servermainD.o: servermain.cpp protocol.h
-	$(CXX) -Wall -c servermain.cpp -I. -DDEBUG -o servermainD.o
+	$(CXX) -Wall -c servermain.cpp -I. -DDEBUG -o servermainD.o -std=c++11
 
 
 clientmain.o: clientmain.cpp protocol.h
@@ -35,7 +35,7 @@ calcLib.o: calcLib.c calcLib.h
 	gcc -Wall -fPIC -c calcLib.c
 
 libcalc: calcLib.o
-	ar -rc libcalc.a -o calcLib.o
+	ar -rc libcalc.a calcLib.o
 
 clean:
-	rm *.o *.a test server client
+	rm *.o *.a test server serverD client
