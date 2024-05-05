@@ -102,6 +102,10 @@ void async_send_calc_result(int sockfd, struct sockaddr clientAddr,
       -1) {
     perror("talker: sendto");
   }
+
+  auto ip_port = get_ip_port(clientAddr);
+  auto key = create_client_key(ip_port);
+  clients.erase(key);
 }
 
 void async_reject_client(int sockfd, struct sockaddr clientAddr,
@@ -117,10 +121,6 @@ void async_reject_client(int sockfd, struct sockaddr clientAddr,
              clientAddrLen) == -1) {
     perror("talker: sendto");
   }
-
-  auto ip_port = get_ip_port(clientAddr);
-  auto key = create_client_key(ip_port);
-  clients.erase(key);
 }
 
 void handle_invalid_message(int sockfd, struct sockaddr clientAddr,
