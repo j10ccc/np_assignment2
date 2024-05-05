@@ -37,7 +37,7 @@ std::tuple<std::string, int> get_ip_port(sockaddr clientAddr) {
     std::get<1>(t) = ntohs(((struct sockaddr_in *)&clientAddr)->sin_port);
   }
 
-  std::cout << "IP: " << std::get<0>(t) << ", port: " << std::get<1>(t) << std::endl;
+  // std::cout << "IP: " << std::get<0>(t) << ", port: " << std::get<1>(t) << std::endl;
   return t;
 }
 
@@ -48,12 +48,13 @@ void async_send_calc_assignment(int sockfd, Client *target,
   assignment.type = htons(1);
   assignment.major_version = htons(1);
   assignment.minor_version = htons(0);
-  assignment.arith = htonl(rand() % 8 + 1);
+  int arith = rand() % 8 + 1;
+  assignment.arith = htonl(arith);
   assignment.id = htonl(generate_id());
 
-  if (assignment.arith <= 4) {
-    assignment.inValue1 = randomInt();
-    assignment.inValue2 = randomInt();
+  if (arith <= 4) {
+    assignment.inValue1 = htonl(randomInt());
+    assignment.inValue2 = htonl(randomInt());
   } else {
     assignment.flValue1 = randomFloat();
     assignment.flValue2 = randomFloat();
@@ -121,12 +122,12 @@ void handle_new_client(int sockfd, struct sockaddr clientAddr,
 
     if (clients.find(clientKey) == clients.end()) {
 
-      printf("New client from %s\n", clientKey.c_str());
       auto ip_port = get_ip_port(clientAddr);
       Client client;
       client.ip = std::get<0>(ip_port);
       client.port = std::get<1>(ip_port);
 
+      std::cout << "[INFO] New client from " << client.ip << " " << client.port << std::endl;
       client.last_seen = std::chrono::steady_clock::now();
       clients[clientKey] = client;
       std::thread t(async_send_calc_assignment, sockfd, &clients[clientKey],
@@ -217,11 +218,8 @@ int main(int argc, char *argv[]) {
 
     clientAddr.sa_family = use_ipv6 ? AF_INET6 : AF_INET;
 
-    get_ip_port(clientAddr);
-
     if (bytesReceived < 0) {
       std::cerr << "Error receiving data" << std::endl;
-      continue;
     } else if (bytesReceived == sizeof(calcProtocol)) {
       handle_calc_response(server_socket, clientAddr, clientAddrLen, buffer);
       memset(buffer, 0, sizeof(buffer));
