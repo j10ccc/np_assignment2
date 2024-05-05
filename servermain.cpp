@@ -1,5 +1,6 @@
 #include <iostream>
 #include <netdb.h>
+#include <arpa/inet.h>
 #include <thread>
 #include <unistd.h>
 
@@ -22,8 +23,26 @@ int server_socket;
 int seed = 0;
 int generate_id() { return seed++; }
 
+std::tuple<std::string, int> get_ip_port(sockaddr clientAddr) {
+  std::tuple<std::string, int> t;
+
+  if (clientAddr.sa_family == AF_INET6) {
+    char ip[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, &((struct sockaddr_in6 *)&clientAddr)->sin6_addr, ip, INET6_ADDRSTRLEN);
+
+    std::get<0>(t) = ip;
+    std::get<1>(t) = ntohs(((struct sockaddr_in *)&clientAddr)->sin_port);
+  } else {
+    std::get<0>(t) = inet_ntoa(((struct sockaddr_in *)&clientAddr)->sin_addr);
+    std::get<1>(t) = ntohs(((struct sockaddr_in *)&clientAddr)->sin_port);
+  }
+
+  std::cout << "IP: " << std::get<0>(t) << ", port: " << std::get<1>(t) << std::endl;
+  return t;
+}
+
 void async_send_calc_assignment(int sockfd, Client *target,
-                                struct sockaddr_in clientAddr,
+                                struct sockaddr clientAddr,
                                 socklen_t clientAddrLen) {
   calcProtocol assignment;
   assignment.type = htons(1);
@@ -42,13 +61,13 @@ void async_send_calc_assignment(int sockfd, Client *target,
 
   target->assignment = assignment;
 
-  if (sendto(sockfd, &assignment, sizeof(calcProtocol), 0,
-             (struct sockaddr *)&clientAddr, clientAddrLen) == -1) {
+  if (sendto(sockfd, &assignment, sizeof(calcProtocol), 0, &clientAddr,
+             clientAddrLen) == -1) {
     perror("talker: sendto");
   }
 }
 
-void async_send_calc_result(int sockfd, struct sockaddr_in clientAddr,
+void async_send_calc_result(int sockfd, struct sockaddr clientAddr,
                             socklen_t clientAddrLen) {
   calcMessage result;
   result.message = htonl(1);
@@ -57,13 +76,13 @@ void async_send_calc_result(int sockfd, struct sockaddr_in clientAddr,
   result.protocol = htons(17);
   result.type = htons(1);
 
-  if (sendto(sockfd, &result, sizeof(result), 0, (struct sockaddr *)&clientAddr,
-             clientAddrLen) == -1) {
+  if (sendto(sockfd, &result, sizeof(result), 0, &clientAddr, clientAddrLen) ==
+      -1) {
     perror("talker: sendto");
   }
 }
 
-void async_reject_client(int sockfd, struct sockaddr_in clientAddr,
+void async_reject_client(int sockfd, struct sockaddr clientAddr,
                          socklen_t clientAddrLen) {
   calcMessage result;
   result.message = htonl(2);
@@ -72,19 +91,19 @@ void async_reject_client(int sockfd, struct sockaddr_in clientAddr,
   result.protocol = htons(17);
   result.type = htons(2);
 
-  if (sendto(sockfd, &result, sizeof(calcMessage), 0,
-             (struct sockaddr *)&clientAddr, clientAddrLen) == -1) {
+  if (sendto(sockfd, &result, sizeof(calcMessage), 0, &clientAddr,
+             clientAddrLen) == -1) {
     perror("talker: sendto");
   }
 }
 
-void handle_invalid_message(int sockfd, struct sockaddr_in clientAddr,
+void handle_invalid_message(int sockfd, struct sockaddr clientAddr,
                             socklen_t clientAddrLen) {
   std::thread t(async_reject_client, sockfd, clientAddr, clientAddrLen);
   t.detach();
 }
 
-void handle_new_client(int sockfd, struct sockaddr_in clientAddr,
+void handle_new_client(int sockfd, struct sockaddr clientAddr,
                        socklen_t clientAddrLen, char *buffer) {
   // FIXME: Should I release it?
   calcMessage *calcMsg = reinterpret_cast<calcMessage *>(buffer);
@@ -98,15 +117,16 @@ void handle_new_client(int sockfd, struct sockaddr_in clientAddr,
   if (calcMsg->protocol == 17 && calcMsg->major_version == 1 &&
       calcMsg->minor_version == 0 && calcMsg->type == 22) {
     // binary protocol
-    std::string clientKey = std::to_string(clientAddr.sin_addr.s_addr) + ":" +
-                            std::to_string(clientAddr.sin_port);
+    std::string clientKey = clientAddr.sa_data;
 
     if (clients.find(clientKey) == clients.end()) {
 
       printf("New client from %s\n", clientKey.c_str());
+      auto ip_port = get_ip_port(clientAddr);
       Client client;
-      client.ip = std::to_string(clientAddr.sin_addr.s_addr);
-      client.port = clientAddr.sin_port;
+      client.ip = std::get<0>(ip_port);
+      client.port = std::get<1>(ip_port);
+
       client.last_seen = std::chrono::steady_clock::now();
       clients[clientKey] = client;
       std::thread t(async_send_calc_assignment, sockfd, &clients[clientKey],
@@ -118,11 +138,10 @@ void handle_new_client(int sockfd, struct sockaddr_in clientAddr,
   }
 }
 
-void handle_calc_response(int sockfd, struct sockaddr_in clientAddr,
+void handle_calc_response(int sockfd, struct sockaddr clientAddr,
                           socklen_t clientAddrLen, char *buffer) {
 
-  std::string clientKey = std::to_string(clientAddr.sin_addr.s_addr) + ":" +
-                          std::to_string(clientAddr.sin_port);
+  std::string clientKey = clientAddr.sa_data;
   if (clients.find(clientKey) == clients.end())
     return;
 
@@ -189,13 +208,16 @@ int main(int argc, char *argv[]) {
   freeaddrinfo(res);
 
   while (true) {
-    struct sockaddr_in clientAddr;
+    struct sockaddr clientAddr;
     socklen_t clientAddrLen = sizeof(clientAddr);
     char buffer[MAX_BUFFER_SIZE] = {};
 
-    int bytesReceived =
-        recvfrom(server_socket, buffer, MAX_BUFFER_SIZE, 0,
-                 (struct sockaddr *)&clientAddr, &clientAddrLen);
+    int bytesReceived = recvfrom(server_socket, buffer, MAX_BUFFER_SIZE, 0,
+                                 &clientAddr, &clientAddrLen);
+
+    clientAddr.sa_family = use_ipv6 ? AF_INET6 : AF_INET;
+
+    get_ip_port(clientAddr);
 
     if (bytesReceived < 0) {
       std::cerr << "Error receiving data" << std::endl;
