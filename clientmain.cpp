@@ -28,6 +28,8 @@
 #define OUTPUT_ARG 5
 
 #define NOCL 10000
+#define CALC_RESULT_DELAY 4
+#define RETRY_TIME 3
 
 int main(int argc, char *argv[]) {
 
@@ -249,8 +251,8 @@ int main(int argc, char *argv[]) {
       ERRORresults++;
     }
   }
-  printf("\nWaiting 4s \n");
-  sleep(4);
+  printf("\nWaiting %ds \n", CALC_RESULT_DELAY);
+  sleep(CALC_RESULT_DELAY);
 
   printf("Doing Calculations .\n\n");
   for (int i = 0; i < noClients; i++) {
@@ -335,6 +337,7 @@ int main(int argc, char *argv[]) {
              CP[i].flValue1, CP[i].flValue2, CP[i].flResult);
     }
 
+    // CP[i].id = htonl(999);
     if ((numbytes = sendto(sockfd[i], &CP[i], sizeof(cProtocol), 0, p->ai_addr,
                            p->ai_addrlen)) == -1) {
       perror("talker: sendto");
