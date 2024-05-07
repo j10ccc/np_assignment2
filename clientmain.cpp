@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 /* You will to add includes here */
+#include <iostream>
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -14,11 +15,18 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <thread>
 #include <unistd.h>
 
 #define DEBUG
 
 #include "protocol.h"
+#define HOST_ARG 1
+#define PORT_ARG 2
+#define NOCL_ARG 3
+#define PROB_ARG 4
+#define OUTPUT_ARG 5
+
 #define NOCL 10000
 
 int main(int argc, char *argv[]) {
@@ -39,7 +47,7 @@ int main(int argc, char *argv[]) {
 
   FILE *fptr = nullptr;
 
-  if (argc < 4 || argc > 5) {
+  if (argc < 5 || argc > 6) {
 
     fprintf(
         stderr,
@@ -49,11 +57,10 @@ int main(int argc, char *argv[]) {
       fprintf(fptr, "ERROR OCCURED");
     exit(1);
   }
-  char delim[] = ":";
-  char *Desthost = strtok(argv[1], delim);
-  char *Destport = strtok(NULL, delim);
-  int noClients = atoi(argv[2]);
-  int prob = atoi(argv[3]);
+  char *Desthost = argv[HOST_ARG];
+  char *Destport = argv[PORT_ARG];
+  int noClients = atoi(argv[NOCL_ARG]);
+  int prob = atoi(argv[PROB_ARG]);
 
   if (noClients >= NOCL) {
     printf("Too many clients..Max is %d.\n", NOCL);
@@ -77,10 +84,10 @@ int main(int argc, char *argv[]) {
 
   printf("Connecting %d clients %s on port=%s \n", noClients, Desthost,
          Destport);
-  printf("Saving to %s \n", argv[4]);
-  fptr = fopen(argv[4], "w+");
+  printf("Saving to %s \n", argv[OUTPUT_ARG]);
+  fptr = fopen(argv[OUTPUT_ARG], "w+");
   if (fptr == NULL) {
-    printf("Cant write to %s, %s.\n", argv[4], strerror(errno));
+    printf("Cant write to %s, %s.\n", argv[OUTPUT_ARG], strerror(errno));
   }
 
   memset(&hints, 0, sizeof hints);
@@ -479,7 +486,7 @@ int main(int argc, char *argv[]) {
   if (bobsMother == -1) {
     perror("Socket cant do nr2");
   } else {
-    rv = connect(bobsMother, p->ai_addr, p->ai_addrlen);
+    // rv = connect(bobsMother, p->ai_addr, p->ai_addrlen);
     if (rv == -1) {
       perror("Cant connect to socket..");
     } else {
