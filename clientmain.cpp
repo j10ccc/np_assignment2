@@ -31,6 +31,38 @@
 #define CALC_RESULT_DELAY 4
 #define RETRY_TIME 3
 
+struct Message {
+  int length;
+  char *data;
+};
+
+void async_send_request_with_retry(int client, void *data, size_t dataLen,
+                                   sockaddr *serverAddr,
+                                   socklen_t serverAddrLen, Message *response) {
+  int retry = 0;
+
+  while (retry < RETRY_TIME) {
+
+    if (sendto(client, data, dataLen, 0, serverAddr, serverAddrLen) == -1) {
+      perror("talker sendto: ");
+    }
+    struct timeval timeout;
+    timeout.tv_sec = 5;
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
+               sizeof(timeout));
+
+    int len = recvfrom(client, response->data, 1024, 0, NULL, NULL);
+
+    if (len > 0) {
+      response->length = len;
+      break;
+    } else {
+      std::cout << "Timeout, retrying..." << std::endl;
+      retry++;
+    }
+  }
+}
+
 int main(int argc, char *argv[]) {
 
   /* Do magic */
@@ -173,41 +205,32 @@ int main(int argc, char *argv[]) {
   printf("uint16_t = %lu \n", sizeof(uint16_t));
   printf("uint32_t = %lu \n", sizeof(uint32_t));
 
+  struct Message messages[noClients];
+
   for (int i = 0; i < noClients; i++) {
-    if ((numbytes = sendto(sockfd[i], &CM, sizeof(CM), 0, p->ai_addr,
-                           p->ai_addrlen)) == -1) {
-      perror("talker: sendto");
-      if (fptr != NULL)
-        fprintf(fptr, "ERROR OCCURED");
-      exit(1);
-    } else {
-      if ((s = getsockname(sockfd[i], (struct sockaddr *)&sa, &sa_len) == -1)) {
-        perror("getsockname failed.");
-      } else {
-        printf("Client[%d] (%s:%d) registered, sent %d bytes\n", i, localIP,
-               ntohs(sa.sin_port), numbytes);
-      }
-    }
+    Message m = {-1, new char[sizeof(buffer)]};
+    messages[i] = m;
+  }
+
+  std::vector<std::thread> threads;
+  for (int i = 0; i < noClients; i++) {
+    threads.push_back(std::thread(async_send_request_with_retry, sockfd[i], &CM,
+                                  sizeof(CM), p->ai_addr, p->ai_addrlen,
+                                  &messages[i]));
+  }
+
+  for (auto &t : threads) {
+    t.join();
   }
 
   printf("\n-----RESPONSES to calcMessage (registration) ----- \n");
 
   for (int i = 0; i < noClients; i++) {
-    if ((numbytes = recvfrom(sockfd[i], buffer, sizeof(buffer), 0,
-                             (struct sockaddr *)&their_addr, &addr_len)) ==
-        -1) {
-      perror("recvfrom");
-      if (fptr != NULL)
-        fprintf(fptr, "ERROR OCCURED");
-      exit(1);
-    } else {
-      //      printf("Client[%d] received %d bytes \n",i,numbytes);
-      printf("Client[%d] ", i);
-    }
-    /* read info */
-    /* Copy to internal structure */
+    numbytes = messages[i].length;
     if (numbytes == sizeof(cProtocol)) {
-      memcpy(&CP[i], buffer, sizeof(cProtocol));
+      /* Copy to internal structure */
+      memcpy(&CP[i], messages[i].data, sizeof(cProtocol));
+      delete messages[i].data;
       printf("| calcProtocol type=%d version=%d.%d id=%d arith=%d ",
              ntohs(CP[i].type), ntohs(CP[i].major_version),
              ntohs(CP[i].minor_version), ntohl(CP[i].id), ntohl(CP[i].arith));
