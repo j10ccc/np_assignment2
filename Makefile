@@ -11,7 +11,7 @@ servermainD.o: servermain.cpp protocol.h
 
 
 clientmain.o: clientmain.cpp protocol.h
-	$(CXX) -Wall -c clientmain.cpp -I.
+	$(CXX) -Wall -c clientmain.cpp -I. -std=c++11
 
 main.o: main.cpp protocol.h
 	$(CXX) -Wall -c main.cpp -I.
